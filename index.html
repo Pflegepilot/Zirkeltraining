@@ -1382,6 +1382,53 @@ function drawMA(doc,m,first){
 }
 function newDoc(){return new window.jspdf.jsPDF({unit:'pt',format:'a4',compress:true});}
 function pdfForMA(m){const d=newDoc();drawMA(d,m,true);d.setProperties({title:'Zirkeltraining '+fmtFull(S.meta.datum)+' - '+m.name,subject:S.meta.titel,creator:'Zirkeltraining-App'});return d;}
+function pdfAttendance(list,ber,doc){
+  list=(list||TN()).slice().sort((a,b)=>(berOf(a)===berOf(b)?0:(berOf(a)==='ss'?-1:1))||String(a.name||'').localeCompare(String(b.name||''),'de'));
+  const einr=ber?einrOf(ber):null;const ids=new Set(list.map(m=>m.id));
+  const alc=a=>cellsOfAL(a.id).filter(c=>ids.has(c.ma.id)).length;
+  let refs=S.anleiter.filter(a=>alc(a));if(!refs.length)refs=S.anleiter.slice();
+  const d=doc||newDoc();if(doc)d.addPage();let page=1;frame(d,page,einr);
+  T(d,'Anwesenheitsliste - Zirkeltraining'+(ber?' '+berLabel(ber):''),71,91,{bold:true,size:14});
+  T(d,'Datum: '+fmtLong(S.meta.datum),71,112,{size:10});
+  {const t='Thema: '+(S.meta.titel||'Checkliste zur Mitarbeitervisite - Zirkeltraining');const z=fitText(d,t,457,10);T(d,t,71,126,{size:z});}
+  const cols=[71,92,232,277,337,382,528];const H=['Nr.','Name','Qualif.','Bereich','Gruppe','Unterschrift'];
+  let y=140;
+  const head=()=>{d.setFillColor(242,244,244);d.rect(71,y,457,18,'F');H.forEach((h,i)=>T(d,h,cols[i]+3,y+12.5,{size:8.5,bold:true}));y+=18;};
+  head();
+  list.forEach((m,i)=>{
+    if(y>752){L(d,71,y,528,y,0.4);d.addPage();page++;frame(d,page,einr);y=70;head();}
+    L(d,71,y,528,y,0.3);
+    T(d,String(i+1),cols[0]+3,y+17,{size:9.5});
+    {const z=fitText(d,m.name||'',136,9.5);T(d,m.name||'',cols[1]+3,y+17,{size:z});}
+    {const z=fitText(d,m.quali||'',42,9);T(d,m.quali||'',cols[2]+3,y+17,{size:z});}
+    T(d,berLabel(berOf(m)),cols[3]+3,y+17,{size:9});
+    T(d,grpOf(m)!==null?String(grpOf(m)+1):'',cols[4]+3,y+17,{size:9});
+    if(m.sig)IMG(d,m.sig,'sig_'+m.id,cols[5]+3,y+2,cols[6]-cols[5]-6,22,0.5);
+    y+=26;
+  });
+  L(d,71,y,528,y,0.4);
+  const signed=list.filter(m=>m.sig).length;
+  y+=16;T(d,'Teilnehmende: '+list.length+'   ·   davon unterschrieben: '+signed,71,y,{size:9.5});
+  y+=26;if(y>700){d.addPage();page++;frame(d,page,einr);y=80;}
+  T(d,'Durchführende PFK / Anleitung',71,y,{bold:true,size:11});y+=10;
+  refs.forEach(a=>{
+    if(y>752){d.addPage();page++;frame(d,page,einr);y=80;}
+    L(d,71,y,528,y,0.3);{const z=fitText(d,a.name||'',150,9.5);T(d,a.name||'',74,y+17,{size:z});}T(d,a.quali||'PFK',235,y+17,{size:9});
+    if(a.sig)IMG(d,a.sig,'sig_'+a.id,cols[5]+3,y+2,cols[6]-cols[5]-6,22,0.5);y+=26;
+  });
+  L(d,71,y,528,y,0.4);
+  const pk=ber?[ber]:(byBer(list).map(g=>g.k));if(!pk.length)pk.push('ss');
+  if(y+pk.length*38+20>780){d.addPage();page++;frame(d,page,einr);y=60;}
+  pk.forEach(k=>{const P=pdlObj(k);
+    y+=30;
+    T(d,'Datum:',71,y+1.7);if(P.sigAt)T(d,fmtTS(P.sigAt),104,y-2.2);L(d,101.2,y,230.3,y,0.25);
+    T(d,'Unterschrift Pflegedienstleitung:',362.5,y+1.7,{align:'right'});L(d,366.8,y,528,y,0.25);
+    if(P.sig)IMG(d,P.sig,'sig_pdl_'+k,368,y-31,158,30.5,1,'bottom');
+    T(d,'('+pdlName(k)+(pk.length>1?' · '+berLabel(k):'')+')',528,y+9.5,{size:7.5,color:90,align:'right'});
+    y+=8;});
+  return d;
+}
+function pdfAttendanceAll(){const gs=byBer(TN());if(!gs.length)return pdfAttendance(TN());let d=null;gs.forEach(g=>{d=pdfAttendance(g.list,g.k,d);});return d;}
 function pdfOverview(list,ber){
   list=list||TN();const einr=ber?einrOf(ber):null;const ids=new Set(list.map(m=>m.id));
   const alc=a=>cellsOfAL(a.id).filter(c=>ids.has(c.ma.id)).length;
@@ -1451,6 +1498,8 @@ async function runPdf(kind,id){
   try{
     if(kind==='one'){const m=maById(id);const d=pdfForMA(m);offerFile(base+'_'+safeName(m.name)+'.pdf',d.output('blob'));return;}
     if(kind==='ov'){offerFile(base+'_Teilnehmeruebersicht.pdf',pdfOverview().output('blob'));return;}
+    if(kind==='att'){offerFile(base+'_Anwesenheitslisten_Sozialstation_Tagespflege.pdf',pdfAttendanceAll().output('blob'));return;}
+    if(kind==='attB'){const k=id==='tp'?'tp':'ss';offerFile(base+'_Anwesenheitsliste_'+berLabel(k)+'.pdf',pdfAttendance(TN().filter(m=>berOf(m)===k),k).output('blob'));return;}
     const ma=byBer(TN().filter(m=>cellsOfMA(m.id).length)).reduce((o,g)=>o.concat(g.list),[]);
     const pm=progressModal(kind==='zip'?'PDFs werden erstellt':'Sammel-PDF wird erstellt');
     await sleep(60);
@@ -1465,9 +1514,11 @@ async function runPdf(kind,id){
         let fn=base+'_'+safeName(m.name);const key=g.k+'/'+fn;if(used[key]){used[key]++;fn+='_'+used[key];}else used[key]=1;
         dir.file(fn+'.pdf',pdfForMA(m).output('arraybuffer'));}
       dir.file(base+'_Teilnehmeruebersicht_'+g.label+'.pdf',pdfOverview(g.list,g.k).output('arraybuffer'));
+      dir.file(base+'_Anwesenheitsliste_'+g.label+'.pdf',pdfAttendance(TN().filter(m=>berOf(m)===g.k),g.k).output('arraybuffer'));
     }
     pm.set(ma.length,ma.length,'Übersicht und ZIP …');await sleep(10);
     if(groups.length>1)zip.file(base+'_Teilnehmeruebersicht_gesamt.pdf',pdfOverview(ma).output('arraybuffer'));
+    if(byBer(TN()).length>1)zip.file(base+'_Anwesenheitslisten_Sozialstation_Tagespflege.pdf',pdfAttendanceAll().output('arraybuffer'));
     const blob=await zip.generateAsync({type:'blob',compression:'STORE'});
     pm.close();offerFile(base+'_Checklisten.zip',blob);
   }catch(err){console.error(err);$$('.modal-bg').forEach(closeModal);toast('Fehler beim Erstellen: '+(err&&err.message||err),'bad',6000);}
@@ -1507,11 +1558,12 @@ async function offerFile(name,blob){
 /* ---------- Schritt 3: PDFs ---------- */
 function viewPDF(){
   const iss=issues();const cls={bad:'b-bad',warn:'b-warn',mut:'b-mut'};const lab={bad:'Achtung',warn:'offen',mut:'Info'};
-  const ma=TN().filter(m=>cellsOfMA(m.id).length);
-  return banner('3','PDFs erstellen','Pro Teilnehmer/in entsteht das Formular im Originallayout (2 Seiten) mit Datum, Handzeichen und Unterschriften. Am einfachsten: „Alle Einzel-PDFs als ZIP“ – darin je ein Ordner „Sozialstation“ und „Tagespflege“ mit den Checklisten und der Teilnehmerübersicht des Bereichs. Danach ein Backup sichern.')+
+  const ma=TN().filter(m=>cellsOfMA(m.id).length);const all=TN();
+  return banner('3','PDFs erstellen','Pro Teilnehmer/in entsteht das Formular im Originallayout (2 Seiten) mit Datum, Handzeichen und Unterschriften. Am einfachsten: „Alle Einzel-PDFs als ZIP“ – darin je ein Ordner „Sozialstation“ und „Tagespflege“ mit den Checklisten, der Teilnehmerübersicht und der Anwesenheitsliste des Bereichs. Danach ein Backup sichern.')+
     '<div class="card"><div class="btnrow"><button class="btn primary" data-act="pdfZip" '+(ma.length?'':'disabled')+'>Alle Einzel-PDFs als ZIP</button><button class="btn" data-act="pdfAll" '+(ma.length?'':'disabled')+'>Sammel-PDF (alle in einer Datei)</button><button class="btn" data-act="pdfOv" '+(ma.length?'':'disabled')+'>Teilnehmerübersicht</button><button class="btn" data-act="exportJSON">Backup sichern</button></div></div>'+
+    '<div class="card"><h3>Anwesenheit</h3><p class="hint" style="margin:0 0 10px">Alle '+all.length+' Mitarbeitenden mit Unterschrift – getrennt für Sozialstation und Tagespflege, jeweils mit Unterschrift der Anleitung und der zuständigen PDL.</p><div class="btnrow">'+(all.length?'<button class="btn primary" data-act="pdfAtt">Anwesenheitslisten (beide)</button>'+byBer(all).map(g=>'<button class="btn" data-act="pdfAttB" data-id="'+g.k+'">'+g.label+' ('+g.list.length+')</button>').join(''):'<p class="hint">Noch keine Teilnehmenden.</p>')+'</div></div>'+
     '<div class="card"><h3>Prüfung vor dem Erstellen</h3>'+(iss.length?'<ul class="issues">'+iss.map(i=>'<li><span class="badge '+cls[i[0]]+'">'+lab[i[0]]+'</span>'+esc(i[1])+'</li>').join('')+'</ul>':'<p>Alles vollständig ✓</p>')+'</div>'+
-    '<div class="card"><h3>Einzeln</h3>'+(ma.length?byBer(ma).map(g=>'<div class="sec-title">'+g.label+' ('+g.list.length+')</div><div class="list">'+g.list.map(m=>'<div class="row"><div class="grow"><div class="nm">'+esc(m.name)+'</div><div class="sub">'+esc(m.quali||'')+' · '+cellsOfMA(m.id).length+' von '+total()+' Feldern</div></div>'+stateBadge(maState(m))+'<button class="btn sm" data-act="pdfOne" data-id="'+m.id+'">PDF</button></div>').join('')+'</div>').join(''):'<p class="hint">Noch keine Einträge.</p>')+'</div>';
+    '<div class="card"><h3>Einzeln – alle Mitarbeitenden</h3>'+(all.length?byBer(all).map(g=>'<div class="sec-title">'+g.label+' ('+g.list.length+')</div><div class="list">'+g.list.map(m=>{const n=cellsOfMA(m.id).length;return '<div class="row"><div class="grow"><div class="nm">'+esc(m.name)+'</div><div class="sub">'+esc([m.quali,grpTag(m)].filter(Boolean).join(' · '))+' · '+(n?n+' von '+total()+' Feldern':'noch keine Einträge')+(m.sig?' · unterschrieben':'')+'</div></div>'+stateBadge(maState(m))+'<button class="btn sm" data-act="pdfOne" data-id="'+m.id+'" '+(n?'':'disabled')+'>PDF</button></div>';}).join('')+'</div>').join(''):'<p class="hint">Noch keine Einträge.</p>')+'</div>';
 }
 
 /* ---------- Einstellungen ---------- */
@@ -1638,6 +1690,8 @@ document.addEventListener('click',async e=>{
     case'pdfZip':runPdf('zip');break;
     case'pdfAll':runPdf('all');break;
     case'pdfOv':runPdf('ov');break;
+    case'pdfAtt':runPdf('att');break;
+    case'pdfAttB':runPdf('attB',id);break;
     case'pdfOne':runPdf('one',id);break;
     case'exportJSON':offerFile('Zirkeltraining_Backup_'+S.meta.datum+'.json',new Blob([JSON.stringify(S)],{type:'application/json'}));break;
     /* Einstellungen */
@@ -1670,7 +1724,7 @@ function importJSON(f){
 load();render();
 if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 if(!storageOK)toast('Dieser Browser speichert keine Daten – bitte Backup exportieren.','bad',6000);
-window.__ZT={get S(){return S;},pdfForMA,pdfOverview,render,setS:o=>{S=migrate(o);render();}};
+window.__ZT={get S(){return S;},pdfForMA,pdfOverview,pdfAttendance,render,setS:o=>{S=migrate(o);render();}};
 })();
 </script>
 </body>

@@ -1,6 +1,6 @@
 /* Offline-Cache für die Zirkeltraining-App.
    Beim Ändern der App die Versionsnummer erhöhen, damit das iPad die neue Version holt. */
-const CACHE = 'zirkeltraining-v1';
+const CACHE = 'zirkeltraining-v3';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
